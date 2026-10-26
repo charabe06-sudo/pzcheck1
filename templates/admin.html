@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - PZchecker</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg: #000000; --sidebar-bg: rgba(0, 10, 5, 0.85);
+            --card-bg: rgba(0, 20, 10, 0.6); --card-bg-2: rgba(0, 30, 15, 0.7);
+            --border: rgba(0, 255, 100, 0.15); --border-2: rgba(0, 255, 100, 0.3);
+            --text: #d0ffe0; --text-dim: #4a8a5a; --text-dimmer: #2a4a35;
+            --green: #00ff66; --green-glow: rgba(0, 255, 100, 0.4); --green-soft: rgba(0, 255, 100, 0.08);
+            --red: #ff3355; --yellow: #ffcc00; --cyan: #00e5ff;
+        }
+        html, body { height: 100%; overflow-x: hidden; }
+        body { font-family: 'JetBrains Mono', 'Consolas', monospace; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; font-size: 13px; position: relative; }
+        #matrix-canvas { position: fixed; inset: 0; z-index: -1; opacity: 0.55; }
+        .scanlines { position: fixed; inset: 0; z-index: 0; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(0,0,0,0.15) 0px, rgba(0,0,0,0.15) 1px, transparent 1px, transparent 3px); mix-blend-mode: overlay; }
+        .vignette { position: fixed; inset: 0; z-index: 0; pointer-events: none; background: radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,0.85) 100%); }
+        .top-glow { position: fixed; top: 0; left: 0; right: 0; height: 300px; z-index: 0; pointer-events: none; background: radial-gradient(ellipse at top, rgba(0,255,100,0.15), transparent 70%); }
+        .sidebar { width: 240px; background: var(--sidebar-bg); backdrop-filter: blur(20px); border-right: 1px solid var(--border); padding: 20px 0; display: flex; flex-direction: column; position: fixed; height: 100vh; left: 0; top: 0; z-index: 100; }
+        .sidebar .logo { padding: 0 20px 24px; display: flex; align-items: center; gap: 10px; font-size: 1.1rem; font-weight: 800; }
+        .sidebar .logo .logo-icon { width: 30px; height: 30px; border-radius: 6px; background: linear-gradient(135deg, var(--green), #00aa44); display: flex; align-items: center; justify-content: center; color: #000; font-size: 0.95rem; font-weight: 800; box-shadow: 0 0 20px var(--green-glow); }
+        .sidebar .logo .logo-text { color: var(--green); text-shadow: 0 0 10px var(--green-glow); }
+        .sidebar .logo .logo-badge { background: var(--green); color: #000; padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: 800; }
+        .sidebar .menu-label { padding: 0 20px 8px; font-size: 0.65rem; color: var(--text-dimmer); text-transform: uppercase; letter-spacing: 2px; font-weight: 700; }
+        .sidebar .menu { display: flex; flex-direction: column; gap: 2px; padding: 0 12px; }
+        .sidebar .menu-item { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 6px; color: var(--text-dim); text-decoration: none; font-size: 0.85rem; font-weight: 500; transition: all 0.15s; position: relative; }
+        .sidebar .menu-item:hover { background: var(--green-soft); color: var(--green); }
+        .sidebar .menu-item.active { background: var(--green-soft); color: var(--green); font-weight: 700; box-shadow: inset 0 0 0 1px var(--border-2); }
+        .sidebar .menu-item.active::before { content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 3px; height: 60%; background: var(--green); border-radius: 0 3px 3px 0; box-shadow: 0 0 10px var(--green); }
+        .sidebar .menu-item .icon { width: 18px; display: flex; align-items: center; justify-content: center; font-size: 0.95rem; }
+        .sidebar .version { margin-top: auto; padding: 20px; font-size: 0.7rem; color: var(--text-dimmer); }
+        .sidebar .version::before { content: '> '; color: var(--green); }
+        .main { margin-left: 240px; flex: 1; min-height: 100vh; display: flex; flex-direction: column; position: relative; z-index: 1; }
+        .topbar { padding: 16px 32px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); background: rgba(0, 10, 5, 0.7); backdrop-filter: blur(20px); position: sticky; top: 0; z-index: 50; }
+        .topbar .page-title h1 { font-size: 1rem; font-weight: 700; color: var(--green); text-shadow: 0 0 10px var(--green-glow); }
+        .topbar .page-title h1::before { content: '$ '; color: var(--text-dim); }
+        .topbar .page-title p { font-size: 0.75rem; color: var(--text-dim); margin-top: 2px; }
+        .topbar .topbar-right { display: flex; align-items: center; gap: 10px; }
+        .topbar .pill { display: flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 6px; background: var(--card-bg); border: 1px solid var(--border); font-size: 0.75rem; color: var(--text); font-weight: 500; }
+        .topbar .pill .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse 1.5s ease-in-out infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .topbar .icon-btn { width: 36px; height: 36px; border-radius: 6px; background: var(--card-bg); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-dim); position: relative; text-decoration: none; font-size: 1.2rem; font-weight: bold; }
+        .topbar .icon-btn:hover { background: var(--green-soft); color: var(--green); }
+        .topbar .user { display: flex; align-items: center; gap: 8px; padding: 6px 12px 6px 6px; border-radius: 6px; background: var(--card-bg); border: 1px solid var(--border); }
+        .topbar .user .avatar { width: 26px; height: 26px; border-radius: 4px; background: linear-gradient(135deg, var(--green), #00aa44); display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 800; color: #000; }
+        .topbar .user .name { font-size: 0.8rem; font-weight: 600; color: var(--text); }
+        .content { padding: 28px 32px; flex: 1; max-width: 1400px; width: 100%; }
+        .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 32px; }
+        .stat-card { background: var(--card-bg); backdrop-filter: blur(10px); border: 1px solid var(--border); border-radius: 10px; padding: 20px; position: relative; overflow: hidden; }
+        .stat-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, transparent, var(--green), transparent); opacity: 0.5; }
+        .stat-card .label { font-size: 0.7rem; color: var(--text-dim); margin-bottom: 8px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px; }
+        .stat-card .value { font-size: 2rem; font-weight: 800; color: var(--green); text-shadow: 0 0 15px var(--green-glow); }
+        .stat-card .sub { font-size: 0.7rem; color: var(--text-dimmer); margin-top: 4px; }
+        .panel { background: var(--card-bg); backdrop-filter: blur(10px); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 32px; }
+        .panel-header { padding: 14px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; font-weight: 700; color: var(--green); text-transform: uppercase; letter-spacing: 1.5px; }
+        .panel-header .count { font-size: 0.7rem; padding: 3px 10px; background: var(--green-soft); border: 1px solid var(--border-2); border-radius: 4px; color: var(--green); }
+        table { width: 100%; border-collapse: collapse; }
+        thead { background: rgba(0, 255, 100, 0.04); }
+        th { text-align: left; padding: 12px 20px; font-size: 0.7rem; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid var(--border); }
+        td { padding: 12px 20px; font-size: 0.8rem; border-bottom: 1px solid var(--border); color: var(--text); vertical-align: middle; }
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background: rgba(0, 255, 100, 0.03); }
+        td.mono { font-family: 'JetBrains Mono', monospace; color: var(--green); font-weight: 600; }
+        td.dim { color: var(--text-dim); }
+        td.center { text-align: center; }
+        .badge { display: inline-block; padding: 3px 10px; border-radius: 4px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+        .badge.you { background: rgba(255, 204, 0, 0.15); color: var(--yellow); border: 1px solid rgba(255, 204, 0, 0.3); }
+        .badge.user { background: rgba(0, 229, 255, 0.15); color: var(--cyan); border: 1px solid rgba(0, 229, 255, 0.3); }
+        .badge.banned { background: rgba(255, 51, 85, 0.15); color: var(--red); border: 1px solid rgba(255, 51, 85, 0.3); }
+        
+        .credit-input { width: 70px; padding: 6px 10px; background: var(--card-bg-2); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 0.75rem; font-family: 'JetBrains Mono', monospace; outline: none; }
+        .credit-input:focus { border-color: var(--green); }
+        
+        .add-btn { padding: 6px 12px; background: var(--green-soft); border: 1px solid var(--border-2); border-radius: 4px; color: var(--green); font-size: 0.7rem; font-weight: 700; cursor: pointer; font-family: 'JetBrains Mono', monospace; text-transform: uppercase; letter-spacing: 1px; margin-left: 6px; transition: all 0.15s; }
+        .add-btn:hover { background: var(--green); color: #000; box-shadow: 0 0 15px var(--green-glow); }
+        
+        .reset-btn { padding: 6px 12px; background: rgba(0, 229, 255, 0.1); border: 1px solid rgba(0, 229, 255, 0.3); border-radius: 4px; color: var(--cyan); font-size: 0.7rem; font-weight: 700; cursor: pointer; font-family: 'JetBrains Mono', monospace; text-transform: uppercase; letter-spacing: 1px; margin-left: 6px; transition: all 0.15s; }
+        .reset-btn:hover { background: var(--cyan); color: #000; box-shadow: 0 0 15px rgba(0, 229, 255, 0.4); }
+
+        .ban-btn { padding: 6px 12px; background: rgba(255, 51, 85, 0.1); border: 1px solid rgba(255, 51, 85, 0.3); border-radius: 4px; color: var(--red); font-size: 0.7rem; font-weight: 700; cursor: pointer; font-family: 'JetBrains Mono', monospace; text-transform: uppercase; letter-spacing: 1px; margin-left: 6px; transition: all 0.15s; }
+        .ban-btn:hover { background: var(--red); color: #fff; box-shadow: 0 0 15px rgba(255, 51, 85, 0.4); }
+
+        .credit-display { color: var(--green); font-weight: 800; text-shadow: 0 0 8px var(--green-glow); }
+        .empty { padding: 40px 20px; text-align: center; color: var(--text-dimmer); font-size: 0.85rem; }
+        @media (max-width: 900px) { .sidebar { transform: translateX(-100%); } .main { margin-left: 0; } .stats-grid { grid-template-columns: repeat(2, 1fr); } }
+    </style>
+</head>
+<body>
+    <canvas id="matrix-canvas"></canvas>
+    <div class="scanlines"></div>
+    <div class="vignette"></div>
+    <div class="top-glow"></div>
+
+<aside class="sidebar">
+        <div class="logo">
+            <div class="logo-icon">&#10003;</div>
+            <span class="logo-text">PZ</span>
+            <span class="logo-badge">Checker</span>
+        </div>
+        <div class="menu-label">// Menu</div>
+        <nav class="menu">
+            <a class="menu-item" href="/dashboard"><span class="icon">&#9638;</span> Dashboard</a>
+            <a class="menu-item" href="/live"><span class="icon">&#9889;</span> Live</a>
+            <a class="menu-item" href="/prices"><span class="icon">&#128178;</span> OurPrices</a>
+            <a class="menu-item active" href="/admin"><span class="icon">&#128081;</span> Admin</a>
+            <a class="menu-item" href="/settings"><span class="icon">&#9881;</span> Settings</a>
+        </nav>
+        <div class="version">PZchecker v1.0</div>
+    </aside>
+
+<div class="main">
+        <header class="topbar">
+            <div class="page-title">
+                <h1>Admin Panel</h1>
+                <p>Manage users & credits</p>
+            </div>
+            <div class="topbar-right">
+                <div class="pill"><span class="dot"></span> Admin Mode</div>
+                <div class="user">
+                    <div class="avatar">{{ username[0]|upper }}</div>
+                    <span class="name">{{ username }}</span>
+                </div>
+                <a href="{{ url_for('logout') }}" class="icon-btn" title="Logout">&#10162;</a>
+            </div>
+        </header>
+
+<main class="content">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="label">Total Users</div>
+                    <div class="value">{{ stats.total_users }}</div>
+                    <div class="sub">{{ stats.today_users }} new today</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">Total Live Cards</div>
+                    <div class="value">{{ stats.total_cards }}</div>
+                    <div class="sub">{{ stats.today_cards }} today</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">New Today</div>
+                    <div class="value">{{ stats.today_users + stats.today_cards }}</div>
+                    <div class="sub">users + cards</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">Access Level</div>
+                    <div class="value" style="font-size: 1.2rem; color: var(--yellow);">ADMIN</div>
+                    <div class="sub">{{ username }}</div>
+                </div>
+            </div>
+
+<div class="panel">
+                <div class="panel-header">
+                    <span>&#128100; Registered Users</span>
+                    <span class="count">{{ users|length }} total</span>
+                </div>
+                {% if users|length == 0 %}
+                <div class="empty">No users registered yet.</div>
+                {% else %}
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 60px;">ID</th>
+                            <th>Username</th>
+                            <th style="width: 100px;">Credits</th>
+                            <th>Joined</th>
+                            <th style="width: 120px;">Role</th>
+                            <th style="width: 320px;">Manage</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for u in users %}
+                        <tr>
+                            <td class="dim">#{{ u[0] }}</td>
+                            <td class="mono">{{ u[1] }}</td>
+                            <td><span class="credit-display">{{ u[2] }}</span></td>
+                            <td class="dim">{{ u[3] }}</td>
+                            <td>
+                                {% if u[1] == username %}
+                                <span class="badge you">You (Admin)</span>
+                                {% elif u[4] == 1 %}
+                                <span class="badge banned">Banned</span>
+                                {% else %}
+                                <span class="badge user">User</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <input type="number" class="credit-input" id="amt-{{ u[0] }}" placeholder="Amount" value="10">
+                                <button class="add-btn" data-user="{{ u[0] }}" data-name="{{ u[1] }}">+ Add</button>
+                                <button class="reset-btn" data-user="{{ u[0] }}" data-name="{{ u[1] }}">&#10226; Reset</button>
+                                
+                                {% if u[1] != username and u[4] == 0 %}
+                                <button class="ban-btn" data-user="{{ u[0] }}" data-name="{{ u[1] }}">&#10006; BAN</button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% endif %}
+            </div>
+
+<div class="panel">
+                <div class="panel-header">
+                    <span>&#128179; Recent Live Cards</span>
+                    <span class="count">{{ cards|length }} shown</span>
+                </div>
+                {% if cards|length == 0 %}
+                <div class="empty">No live cards yet.</div>
+                {% else %}
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 60px;">ID</th>
+                            <th>Card</th>
+                            <th>User</th>
+                            <th>Gateway</th>
+                            <th>Brand</th>
+                            <th>Bank</th>
+                            <th>Country</th>
+                            <th>Time</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for c in cards %}
+                        <tr>
+                            <td class="dim">#{{ c[0] }}</td>
+                            <td class="mono">{{ c[1] }}</td>
+                            <td>{{ c[9] }}</td>
+                            <td class="dim">{{ c[2] }}</td>
+                            <td>{{ c[4] }}</td>
+                            <td class="dim">{{ c[5] }}</td>
+                            <td class="dim">{{ c[6] }}</td>
+                            <td class="dim">{{ c[8] }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% endif %}
+            </div>
+        </main>
+    </div>
+
+<script>
+        (function matrixRain() {
+            const canvas = document.getElementById('matrix-canvas');
+            const ctx = canvas.getContext('2d');
+            let width, height, columns, drops;
+            const fontSize = 14;
+            const chars = '0123456789ABCDEF<>{}[]()/\\|=+-*&^%$#@!?';
+            function resize() {
+                width = canvas.width = window.innerWidth;
+                height = canvas.height = window.innerHeight;
+                columns = Math.floor(width / fontSize);
+                drops = [];
+                for (let i = 0; i < columns; i++) drops[i] = Math.random() * -100;
+            }
+            resize();
+            window.addEventListener('resize', resize);
+            function draw() {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.06)';
+                ctx.fillRect(0, 0, width, height);
+                ctx.font = fontSize + 'px JetBrains Mono, monospace';
+                ctx.shadowColor = '#00ff66';
+                for (let i = 0; i < drops.length; i++) {
+                    const text = chars[Math.floor(Math.random() * chars.length)];
+                    const x = i * fontSize;
+                    const y = drops[i] * fontSize;
+                    if (Math.random() > 0.975) {
+                        ctx.fillStyle = '#aaffcc';
+                        ctx.shadowBlur = 15;
+                    } else {
+                        ctx.fillStyle = '#00ff66';
+                        ctx.shadowBlur = 6;
+                    }
+                    ctx.fillText(text, x, y);
+                    if (y > height && Math.random() > 0.975) drops[i] = 0;
+                    drops[i]++;
+                }
+            }
+            setInterval(draw, 50);
+        })();
+
+document.querySelectorAll('.add-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                const userId = btn.dataset.user;
+                const input = document.getElementById('amt-' + userId);
+                const amount = parseInt(input.value, 10);
+                
+                if (isNaN(amount)) {
+                    alert('Enter a valid number');
+                    return;
+                }
+                
+                btn.disabled = true;
+                btn.textContent = '...';
+                fetch('/admin/add-credits', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: parseInt(userId, 10), amount: amount })
+                })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.ok) {
+                        btn.textContent = '✓ Done';
+                        setTimeout(function() { location.reload(); }, 700);
+                    } else {
+                        alert(data.error || 'Failed');
+                        btn.disabled = false;
+                        btn.textContent = '+ Add';
+                    }
+                })
+                .catch(function() {
+                    alert('Connection failed');
+                    btn.disabled = false;
+                    btn.textContent = '+ Add';
+                });
+            });
+        });
+
+document.querySelectorAll('.reset-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                const userId = btn.dataset.user;
+                if (!confirm('Are you sure you want to reset credits to 0?')) return;
+                
+                btn.disabled = true;
+                btn.textContent = '...';
+                fetch('/admin/reset-credits', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: parseInt(userId, 10) })
+                })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.ok) {
+                        btn.textContent = '✓ Done';
+                        setTimeout(function() { location.reload(); }, 700);
+                    } else {
+                        alert(data.error || 'Failed');
+                        btn.disabled = false;
+                        btn.innerHTML = '&#10226; Reset';
+                    }
+                })
+                .catch(function() {
+                    alert('Connection failed');
+                    btn.disabled = false;
+                    btn.innerHTML = '&#10226; Reset';
+                });
+            });
+        });
+
+document.querySelectorAll('.ban-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                const userId = btn.dataset.user;
+                const username = btn.dataset.name;
+                
+                if (!confirm('Are you sure you want to BAN user "' + username + '"?\nThis will log them out instantly and prevent them from registering or logging in again.')) {
+                    return;
+                }
+                
+                btn.disabled = true;
+                btn.textContent = '...';
+                fetch('/admin/ban-user', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: parseInt(userId, 10), username: username })
+                })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.ok) {
+                        btn.textContent = '✓ Banned';
+                        setTimeout(function() { location.reload(); }, 700);
+                    } else {
+                        alert(data.error || 'Failed');
+                        btn.disabled = false;
+                        btn.innerHTML = '&#10006; BAN';
+                    }
+                })
+                .catch(function() {
+                    alert('Connection failed');
+                    btn.disabled = false;
+                    btn.innerHTML = '&#10006; BAN';
+                });
+            });
+        });
+    </script>
+</body>
+</html>

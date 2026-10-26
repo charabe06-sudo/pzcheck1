@@ -1,0 +1,5 @@
+flask
+requests
+primp
+httpx
+gunicorn

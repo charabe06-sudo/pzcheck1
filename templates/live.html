@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Cards - PZ Checker</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg: #000000;
+            --sidebar-bg: rgba(0, 10, 5, 0.85);
+            --card-bg: rgba(0, 20, 10, 0.6);
+            --card-bg-2: rgba(0, 30, 15, 0.7);
+            --border: rgba(0, 255, 100, 0.15);
+            --border-2: rgba(0, 255, 100, 0.3);
+            --text: #d0ffe0;
+            --text-dim: #4a8a5a;
+            --text-dimmer: #2a4a35;
+            --green: #00ff66;
+            --green-glow: rgba(0, 255, 100, 0.4);
+            --green-soft: rgba(0, 255, 100, 0.08);
+            --red: #ff3355;
+            --yellow: #ffcc00;
+            --cyan: #00e5ff;
+        }
+        html, body { height: 100%; overflow-x: hidden; }
+        body {
+            font-family: 'JetBrains Mono', 'Consolas', monospace;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            font-size: 13px;
+            position: relative;
+        }
+        #matrix-canvas { position: fixed; inset: 0; z-index: -1; opacity: 0.55; }
+        .scanlines {
+            position: fixed; inset: 0; z-index: 0; pointer-events: none;
+            background: repeating-linear-gradient(0deg, rgba(0,0,0,0.15) 0px, rgba(0,0,0,0.15) 1px, transparent 1px, transparent 3px);
+            mix-blend-mode: overlay;
+        }
+        .vignette {
+            position: fixed; inset: 0; z-index: 0; pointer-events: none;
+            background: radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,0.85) 100%);
+        }
+        .top-glow {
+            position: fixed; top: 0; left: 0; right: 0; height: 300px; z-index: 0; pointer-events: none;
+            background: radial-gradient(ellipse at top, rgba(0,255,100,0.15), transparent 70%);
+        }
+        .sidebar {
+            width: 240px; background: var(--sidebar-bg); backdrop-filter: blur(20px);
+            border-right: 1px solid var(--border); padding: 20px 0;
+            display: flex; flex-direction: column; position: fixed;
+            height: 100vh; left: 0; top: 0; z-index: 100;
+        }
+        .sidebar .logo { padding: 0 20px 24px; display: flex; align-items: center; gap: 10px; font-size: 1.1rem; font-weight: 800; }
+        .sidebar .logo .logo-icon {
+            width: 30px; height: 30px; border-radius: 6px;
+            background: linear-gradient(135deg, var(--green), #00aa44);
+            display: flex; align-items: center; justify-content: center;
+            color: #000; font-size: 0.95rem; font-weight: 800;
+            box-shadow: 0 0 20px var(--green-glow);
+        }
+        .sidebar .logo .logo-text { color: var(--green); text-shadow: 0 0 10px var(--green-glow); }
+        .sidebar .logo .logo-badge { background: var(--green); color: #000; padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: 800; }
+        .sidebar .menu-label { padding: 0 20px 8px; font-size: 0.65rem; color: var(--text-dimmer); text-transform: uppercase; letter-spacing: 2px; font-weight: 700; }
+        .sidebar .menu { display: flex; flex-direction: column; gap: 2px; padding: 0 12px; }
+        .sidebar .menu-item {
+            display: flex; align-items: center; gap: 12px; padding: 10px 12px;
+            border-radius: 6px; color: var(--text-dim); text-decoration: none;
+            font-size: 0.85rem; font-weight: 500; transition: all 0.15s; position: relative;
+        }
+        .sidebar .menu-item:hover { background: var(--green-soft); color: var(--green); }
+        .sidebar .menu-item.active { background: var(--green-soft); color: var(--green); font-weight: 700; box-shadow: inset 0 0 0 1px var(--border-2); }
+        .sidebar .menu-item.active::before {
+            content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+            width: 3px; height: 60%; background: var(--green); border-radius: 0 3px 3px 0;
+            box-shadow: 0 0 10px var(--green);
+        }
+        .sidebar .menu-item .icon { width: 18px; display: flex; align-items: center; justify-content: center; font-size: 0.95rem; }
+        .sidebar .version { margin-top: auto; padding: 20px; font-size: 0.7rem; color: var(--text-dimmer); }
+        .sidebar .version::before { content: '> '; color: var(--green); }
+        .main { margin-left: 240px; flex: 1; min-height: 100vh; display: flex; flex-direction: column; position: relative; z-index: 1; }
+        .topbar {
+            padding: 16px 32px; display: flex; justify-content: space-between; align-items: center;
+            border-bottom: 1px solid var(--border); background: rgba(0, 10, 5, 0.7);
+            backdrop-filter: blur(20px); position: sticky; top: 0; z-index: 50;
+        }
+        .topbar .page-title h1 { font-size: 1rem; font-weight: 700; color: var(--green); text-shadow: 0 0 10px var(--green-glow); }
+        .topbar .page-title h1::before { content: '$ '; color: var(--text-dim); }
+        .topbar .page-title p { font-size: 0.75rem; color: var(--text-dim); margin-top: 2px; }
+        .topbar .topbar-right { display: flex; align-items: center; gap: 10px; }
+        .topbar .pill {
+            display: flex; align-items: center; gap: 6px; padding: 7px 14px;
+            border-radius: 6px; background: var(--card-bg); border: 1px solid var(--border);
+            font-size: 0.75rem; color: var(--text); font-weight: 500;
+        }
+        .topbar .pill .dot {
+            width: 6px; height: 6px; border-radius: 50%; background: var(--green);
+            box-shadow: 0 0 8px var(--green); animation: pulse 1.5s ease-in-out infinite;
+        }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .topbar .icon-btn {
+            width: 36px; height: 36px; border-radius: 6px; background: var(--card-bg);
+            border: 1px solid var(--border); display: flex; align-items: center; justify-content: center;
+            cursor: pointer; color: var(--text-dim); position: relative; text-decoration: none;
+            font-size: 1.2rem; font-weight: bold;
+        }
+        .topbar .icon-btn:hover { background: var(--green-soft); color: var(--green); }
+        .topbar .icon-btn .badge {
+            position: absolute; top: -4px; right: -4px; background: var(--red); color: #fff;
+            font-size: 0.6rem; font-weight: 700; padding: 1px 5px; border-radius: 8px;
+            min-width: 16px; text-align: center;
+        }
+        .topbar .user { display: flex; align-items: center; gap: 8px; padding: 6px 12px 6px 6px; border-radius: 6px; background: var(--card-bg); border: 1px solid var(--border); }
+        .topbar .user .avatar {
+            width: 26px; height: 26px; border-radius: 4px;
+            background: linear-gradient(135deg, var(--green), #00aa44);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 0.75rem; font-weight: 800; color: #000;
+        }
+        .topbar .user .name { font-size: 0.8rem; font-weight: 600; color: var(--text); }
+        .content { padding: 28px 32px; flex: 1; max-width: 1200px; width: 100%; }
+        .live-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+        .live-header .icon { color: var(--green); font-size: 1.1rem; text-shadow: 0 0 10px var(--green-glow); }
+        .live-header h2 { font-size: 1.1rem; font-weight: 700; color: #fff; }
+        .live-header .count {
+            font-size: 0.75rem; color: var(--text-dim); padding: 3px 10px;
+            background: var(--green-soft); border: 1px solid var(--border-2); border-radius: 4px; font-weight: 700;
+        }
+        .toolbar { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        .search-wrapper { flex: 1; min-width: 240px; position: relative; }
+        .search-wrapper .search-icon {
+            position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+            color: var(--text-dim); font-size: 0.85rem; pointer-events: none;
+        }
+        .search-wrapper input {
+            width: 100%; padding: 11px 16px 11px 40px; background: var(--card-bg);
+            border: 1px solid var(--border); border-radius: 6px; color: var(--text);
+            font-size: 0.8rem; font-family: 'JetBrains Mono', monospace; outline: none;
+        }
+        .search-wrapper input:focus { border-color: var(--green); box-shadow: 0 0 0 3px rgba(0, 255, 100, 0.1); }
+        .search-wrapper input::placeholder { color: var(--text-dimmer); }
+        .bin-input {
+            width: 140px; padding: 11px 16px; background: var(--card-bg);
+            border: 1px solid var(--border); border-radius: 6px; color: var(--text);
+            font-size: 0.8rem; font-family: 'JetBrains Mono', monospace; outline: none;
+        }
+        .bin-input:focus { border-color: var(--green); box-shadow: 0 0 0 3px rgba(0, 255, 100, 0.1); }
+        .bin-input::placeholder { color: var(--text-dimmer); }
+        .toolbar-btn {
+            padding: 11px 18px; border-radius: 6px; border: 1px solid var(--border);
+            background: var(--card-bg); color: var(--text); font-size: 0.75rem; font-weight: 700;
+            cursor: pointer; font-family: 'JetBrains Mono', monospace;
+            text-transform: uppercase; letter-spacing: 1px; transition: all 0.15s;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .toolbar-btn:hover { background: var(--green-soft); border-color: var(--green); color: var(--green); }
+        .cards-list { display: flex; flex-direction: column; gap: 14px; }
+        .live-card {
+            background: var(--card-bg); backdrop-filter: blur(10px);
+            border: 1px solid var(--border); border-radius: 10px;
+            padding: 18px 20px; position: relative; transition: all 0.15s;
+        }
+        .live-card:hover { border-color: var(--border-2); box-shadow: 0 0 30px rgba(0, 255, 100, 0.08); }
+        .live-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+        .live-card-header .left { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+        .live-badge {
+            display: inline-flex; align-items: center; gap: 5px;
+            padding: 3px 10px; border-radius: 20px; font-size: 0.7rem; font-weight: 800;
+            background: rgba(0, 255, 100, 0.12); color: var(--green);
+            border: 1px solid rgba(0, 255, 100, 0.35); text-shadow: 0 0 6px var(--green-glow);
+        }
+        .live-card-header .gateway { font-size: 0.85rem; font-weight: 700; color: var(--text); }
+        .live-card-header .time { font-size: 0.7rem; color: var(--text-dim); }
+        .copy-btn {
+            padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border);
+            background: var(--card-bg-2); color: var(--text-dim); font-size: 0.7rem; font-weight: 700;
+            cursor: pointer; font-family: 'JetBrains Mono', monospace; transition: all 0.15s;
+            display: flex; align-items: center; gap: 5px;
+        }
+        .copy-btn:hover { color: var(--green); border-color: var(--green); background: var(--green-soft); }
+        .card-number-box {
+            background: rgba(0, 0, 0, 0.4); border: 1px solid var(--border);
+            border-radius: 6px; padding: 12px 16px; font-size: 0.85rem; font-weight: 700;
+            color: var(--green); font-family: 'JetBrains Mono', monospace; margin-bottom: 10px;
+            word-break: break-all; text-shadow: 0 0 6px var(--green-glow);
+        }
+        .response-text { font-size: 0.75rem; color: var(--text-dim); margin-bottom: 12px; word-break: break-all; line-height: 1.6; }
+        .meta-row {
+            display: flex; flex-wrap: wrap; gap: 16px; font-size: 0.7rem;
+            color: var(--text-dim); padding-top: 12px; border-top: 1px solid var(--border);
+        }
+        .meta-row .meta-item { display: flex; align-items: center; gap: 6px; }
+        .meta-row .meta-label { color: var(--text-dimmer); text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
+        .meta-row .meta-value { color: var(--text); font-weight: 700; }
+        .meta-row .meta-value.green { color: var(--green); text-shadow: 0 0 6px var(--green-glow); }
+        .empty-state { text-align: center; padding: 80px 20px; color: var(--text-dimmer); font-size: 0.85rem; }
+        .empty-state .empty-icon { font-size: 3rem; opacity: 0.3; margin-bottom: 16px; }
+        .empty-state .empty-title { font-size: 1rem; color: var(--text-dim); margin-bottom: 8px; font-weight: 700; }
+        .flash-messages { margin-bottom: 20px; }
+        .flash { padding: 12px 16px; border-radius: 6px; font-size: 0.75rem; margin-bottom: 10px; }
+        .flash.error { background: rgba(255, 51, 85, 0.1); border: 1px solid rgba(255, 51, 85, 0.3); color: var(--red); }
+        .flash.success { background: rgba(0, 255, 100, 0.1); border: 1px solid rgba(0, 255, 100, 0.3); color: var(--green); }
+        .flash.info { background: rgba(0, 229, 255, 0.1); border: 1px solid rgba(0, 229, 255, 0.3); color: var(--cyan); }
+        @media (max-width: 900px) {
+            .sidebar { transform: translateX(-100%); }
+            .main { margin-left: 0; }
+            .toolbar { flex-direction: column; }
+            .bin-input { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="matrix-canvas"></canvas>
+    <div class="scanlines"></div>
+    <div class="vignette"></div>
+    <div class="top-glow"></div>
+
+<aside class="sidebar">
+        <div class="logo">
+            <div class="logo-icon">&#10003;</div>
+            <span class="logo-text">PZ</span>
+            <span class="logo-badge">HUB</span>
+        </div>
+        <div class="menu-label">// Menu</div>
+        <nav class="menu">
+            <a class="menu-item" href="/dashboard"><span class="icon">&#9638;</span> Dashboard</a>
+            <a class="menu-item active" href="/live"><span class="icon">&#9889;</span> Live</a>
+            <a class="menu-item" href="/prices"><span class="icon">&#128178;</span> OurPrices</a>
+            
+            <!-- Only show Admin button to parwar -->
+            {% if session.get('username') == 'parwar' %}
+            <a class="menu-item" href="/admin"><span class="icon">&#128081;</span> Admin</a>
+            {% endif %}
+            
+            <a class="menu-item" href="/settings"><span class="icon">&#9881;</span> Settings</a>
+        </nav>
+        <div class="version">PZHub v1.0</div>
+    </aside>
+
+<div class="main">
+        <header class="topbar">
+            <div class="page-title">
+                <h1>Live Cards</h1>
+                <p>Approved cards saved to your account</p>
+            </div>
+            <div class="topbar-right">
+                <div class="pill"><span class="dot"></span> Credits: <strong>{{ current_user_credits }}</strong></div>
+                
+                <!-- Show VIP if credits > 0 -->
+                {% if current_user_credits > 0 %}
+                <div class="pill" style="color: var(--yellow); border-color: rgba(255,204,0,0.3);">&#11088; VIP</div>
+                {% else %}
+                <div class="pill">&#11088; No VIP</div>
+                {% endif %}
+                
+                <div class="icon-btn">&#128276;<span class="badge">3</span></div>
+                <div class="user">
+                    <div class="avatar">{{ username[0]|upper }}</div>
+                    <span class="name">{{ username }}</span>
+                </div>
+                <a href="{{ url_for('logout') }}" class="icon-btn" title="Logout">&#10162;</a>
+            </div>
+        </header>
+
+<main class="content">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+            <div class="flash-messages">
+                {% for category, message in messages %}
+                <div class="flash {{ category }}">{{ message }}</div>
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% endwith %}
+
+<div class="live-header">
+                <span class="icon">&#9889;</span>
+                <h2>Your live cards</h2>
+                <span class="count">{{ cards|length }} stored</span>
+            </div>
+
+<div class="toolbar">
+                <div class="search-wrapper">
+                    <span class="search-icon">&#128269;</span>
+                    <input type="text" id="searchInput" placeholder="Search card / response / gateway">
+                </div>
+                <input type="text" id="binInput" class="bin-input" placeholder="BIN">
+                <button class="toolbar-btn" id="filterBtn">&#8635; Filter</button>
+                <button class="toolbar-btn" id="copyPageBtn">&#128203; Copy page</button>
+            </div>
+
+<div class="cards-list" id="cardsList">
+                {% if cards|length == 0 %}
+                <div class="empty-state">
+                    <div class="empty-icon">&#128154;</div>
+                    <div class="empty-title">No live cards yet</div>
+                    <div>Run a check on the dashboard to start collecting live cards.</div>
+                </div>
+                {% else %}
+                {% for card in cards %}
+                <div class="live-card"
+                     data-card="{{ card[2] }}"
+                     data-response="{{ card[3] }}"
+                     data-gateway="{{ card[1] }}"
+                     data-bin="{{ card[4] }}">
+                    <div class="live-card-header">
+                        <div class="left">
+                            <span class="live-badge">&#10003; Live</span>
+                            <span class="gateway">{{ card[1] }}</span>
+                            <span class="time">{{ card[10] }}</span>
+                        </div>
+                        <button class="copy-btn" data-copy="{{ card[2] }}">&#128203; Copy</button>
+                    </div>
+                    <div class="card-number-box">{{ card[2] }}</div>
+                    {% if card[3] %}
+                    <div class="response-text">{{ card[3] }}</div>
+                    {% endif %}
+                    <div class="meta-row">
+                        <div class="meta-item">
+                            <span class="meta-label">BIN</span>
+                            <span class="meta-value">{{ card[4] }}</span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="meta-label">Brand</span>
+                            <span class="meta-value">{{ card[5] }}</span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="meta-label">Type</span>
+                            <span class="meta-value">{{ card[6] }}</span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="meta-label">Bank</span>
+                            <span class="meta-value">{{ card[7] }}</span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="meta-label">Country</span>
+                            <span class="meta-value">{{ card[8] }}</span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="meta-label">Charged</span>
+                            <span class="meta-value green">{{ card[9] }} credits</span>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+                {% endif %}
+            </div>
+        </main>
+    </div>
+
+<script>
+        (function matrixRain() {
+            const canvas = document.getElementById('matrix-canvas');
+            const ctx = canvas.getContext('2d');
+            let width, height, columns, drops;
+            const fontSize = 14;
+            const chars = '0123456789ABCDEF<>{}[]()/\\|=+-*&^%$#@!?';
+            function resize() {
+                width = canvas.width = window.innerWidth;
+                height = canvas.height = window.innerHeight;
+                columns = Math.floor(width / fontSize);
+                drops = [];
+                for (let i = 0; i < columns; i++) drops[i] = Math.random() * -100;
+            }
+            resize();
+            window.addEventListener('resize', resize);
+            function draw() {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.06)';
+                ctx.fillRect(0, 0, width, height);
+                ctx.font = fontSize + 'px JetBrains Mono, monospace';
+                ctx.shadowColor = '#00ff66';
+                for (let i = 0; i < drops.length; i++) {
+                    const text = chars[Math.floor(Math.random() * chars.length)];
+                    const x = i * fontSize;
+                    const y = drops[i] * fontSize;
+                    if (Math.random() > 0.975) {
+                        ctx.fillStyle = '#aaffcc';
+                        ctx.shadowBlur = 15;
+                    } else {
+                        ctx.fillStyle = '#00ff66';
+                        ctx.shadowBlur = 6;
+                    }
+                    ctx.fillText(text, x, y);
+                    if (y > height && Math.random() > 0.975) drops[i] = 0;
+                    drops[i]++;
+                }
+            }
+            setInterval(draw, 50);
+        })();
+
+document.querySelectorAll('.copy-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                const text = btn.dataset.copy;
+                navigator.clipboard.writeText(text).then(function() {
+                    const original = btn.innerHTML;
+                    btn.innerHTML = '&#10003; Copied';
+                    setTimeout(function() { btn.innerHTML = original; }, 1200);
+                });
+            });
+        });
+
+document.getElementById('copyPageBtn').addEventListener('click', function() {
+            const cards = document.querySelectorAll('.live-card');
+            const lines = [];
+            cards.forEach(function(c) {
+                if (c.style.display !== 'none') lines.push(c.dataset.card);
+            });
+            navigator.clipboard.writeText(lines.join('\n')).then(function() {
+                const btn = document.getElementById('copyPageBtn');
+                const original = btn.innerHTML;
+                btn.innerHTML = '&#10003; Copied ' + lines.length;
+                setTimeout(function() { btn.innerHTML = original; }, 1500);
+            });
+        });
+
+function applyFilter() {
+            const search = document.getElementById('searchInput').value.toLowerCase().trim();
+            const bin = document.getElementById('binInput').value.trim();
+            const cards = document.querySelectorAll('.live-card');
+            cards.forEach(function(c) {
+                const cardText = (c.dataset.card || '').toLowerCase();
+                const responseText = (c.dataset.response || '').toLowerCase();
+                const gatewayText = (c.dataset.gateway || '').toLowerCase();
+                const binText = c.dataset.bin || '';
+                const matchesSearch = !search || cardText.includes(search) || responseText.includes(search) || gatewayText.includes(search);
+                const matchesBin = !bin || binText.startsWith(bin);
+                c.style.display = (matchesSearch && matchesBin) ? '' : 'none';
+            });
+        }
+
+document.getElementById('filterBtn').addEventListener('click', applyFilter);
+        document.getElementById('searchInput').addEventListener('input', applyFilter);
+        document.getElementById('binInput').addEventListener('input', applyFilter);
+    </script>
+</body>
+</html>
